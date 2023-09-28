@@ -1,0 +1,258 @@
+---
+title: "Wine Quality Descriptive Analysis"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+author: "Allison Jones-Farmer"
+format: 
+  html:
+    toc: true
+    toc-location: left
+    toc-expand: true
+    code-tools: true 
+    code-fold: true
+    code-overflow: scroll
+    self-contained: true
+---
+
+
+## Data Loading and Cleaning
+
+### Package Installation and Initialization
+
+In this portion we use `pacman` to install the necessary packages and clear the global environment.
+
+```{r setup,message=FALSE,warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE,message=FALSE,warning=FALSE, out.width = "100%")
+#package initialization
+rm(list = ls()) # clear global environment
+graphics.off() # close all graphics
+if(require(pacman)==FALSE) install.packages("pacman")
+pacman::p_load(#DataExplorer, # For explorer and cleaning data by visualizing missing values.
+               gptstudio,#For coding assistance
+               httr, # For downloading the data from the UCI
+               tidyverse, # For data manipulation
+               corrplot, # for heatmaps
+               DataExplorer, #for exploring data
+               skimr # for nice summary of data
+               ) # For creating dummy variables of categorical variables automatically.)
+```
+
+### Load data
+
+Download and save the data from the UCI Repository.
+
+```{r, Read Data Files, message=FALSE}
+# URLs for the wine quality data files and text file
+red_wine_url <- "https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-red.csv"
+white_wine_url <- "https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-white.csv"
+text_file_url <- "https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality.names"
+
+# Directory to save the files
+save_directory <- "./data/"
+
+# Download red wine quality data file
+GET(url = red_wine_url, write_disk(paste0(save_directory, "winequality-red.csv"),overwrite=T))
+
+# Download white wine quality data file
+GET(url = white_wine_url, write_disk(paste0(save_directory, "winequality-white.csv"),overwrite=T))
+
+# Download text file
+GET(url = text_file_url, write_disk(paste0(save_directory, "winequality.names"),overwrite=T))
+# These lines of code remove the variables `red_wine_url`, `save_directory`,
+# `text_file_url`, and `white_wine_url` from the R environment.
+
+rm(red_wine_url)        # Remove the variable red_wine_url
+rm(save_directory)       # Remove the variable save_directory
+rm(text_file_url)        # Remove the variable text_file_url
+rm(white_wine_url)       # Remove the variable white_wine_url
+```
+
+### Combine Files
+```{r, combine files,echo=TRUE}
+# Read the red wine data from the CSV file "./data/winequality-red.csv" and store it in the "red" variable
+red = read.csv("./data/winequality-red.csv",sep=";")
+
+# Read the white wine data from the CSV file "./data/winequality-red.csv" and store it in the "white" variable
+white = read.csv("./data/winequality-white.csv",sep=";")
+
+# Add a new column called "color" to the "red" data frame and set all values to "Red"
+red$color = "Red"
+
+# Add a new column called "color" to the "white" data frame and set all values to "White"
+white$color = "White"
+
+# Combine the "red" and "white" data frames using the rbind function and store the result in the "wine" variable
+wine = rbind(red,white)
+
+# Remove the "red" and "white" variables from the workspace using the rm function
+rm(red)
+rm(white)
+```
+
+## Overall Data Profile
+
+```{r}
+skim(wine)
+```
+
+## EDA using DataExplorer Package
+
+Here, we shorten the path to exploration using a package with "canned" graphs.  This is handy, but the graphs are not presentation quality.  the DataExplorer package is useful for graphs as a *precursor* to your analysis.  They can give you direction.  For presentations in either a written document or a slide deck, you will most likely need to either redo the graphs in `ggplot2` or doctor these graphs up quite a bit.
+
+### Introduce data
+
+`plot_intro()` gives us an overview of the types of data and number of rows and columns. `plot_missing()` helps to identify missing rows in each variable.
+
+```{r}
+introduce(wine)
+plot_intro(wine)
+plot_missing(wine)
+```
+
+### Distributions
+
+The functions `plot_bar()` and `plot_histogram()` create a matrix of plots for all categorical and numeric variables respectively.  They are not visually appealing graphs, but they convey the information you need.
+
+```{r}
+plot_bar(wine)
+plot_histogram(wine)
+```
+
+### Boxplots by color
+
+The `plot_boxplot` function gives side-by-side boxplots for all numeric variables. I find this helpful when trying to understand my data.
+
+```{r}
+plot_boxplot(wine, by="color")
+```
+
+### Scatterplots for Quality
+
+The `plot_scaterplot` function gives a matrix of scatterplots for all variables.
+
+```{r}
+plot_scatterplot(wine,by="quality")
+```
+
+
+### Correlations
+
+The `plot_correlations` function gives a heatmap of the correlation matrix.  It is similar to the `corrplot` function.
+
+```{r}
+plot_correlation(wine)
+```
+
+## EDA with ggplot2
+
+### Boxplot of Qulaity
+
+```{r}
+plot <- ggplot(wine, aes(x = color, y=quality)) +
+  geom_boxplot(aes(fill=color)) +
+  ggtitle("Wine Quality by Color") +
+  xlab("Color") +
+  ylab("Quality Ratings") +
+  theme_bw() 
+print(plot)
+```
+
+### Correlation plot
+
+Both wines combined
+
+```{r}
+corrplot::corrplot(cor(wine[1:12]))
+```
+The variables with the three highess correlations with quality are alcohol(+), volatile acidity(-), and density(+)
+
+Lets break this down by color
+
+```{r}
+wine %>%
+  filter(color=="White")%>%
+  select(-color)%>%
+  cor()%>%
+  corrplot()
+```
+The three most correlated variables with quality are also alcohol(+), volatile acidity(-), and density(-).
+
+Here is the same plot for red wine.  
+
+```{r}
+wine %>%
+  filter(color=="Red")%>%
+  select(-color)%>%
+  cor()%>%
+  corrplot()
+```
+The correlation patterns between quality and the most highly correlated predictors are, alcohol (+) and volatile acidity (-).
+
+### Scatter plots of the three most correlated variables
+
+The scatter plots show the expected bivariate relationships.  The correlations between each variable and Quality Ratings are weak, even for the three most correlated variables.
+
+```{r}
+# Alcohol
+wine %>% ggplot(aes(x=alcohol, y=quality)) + 
+  geom_point(color="#69b3a2",size=3) +
+  xlab("Alcohol") +
+  ylab("Quality Ratings") +
+  ggtitle("Alcohol vs. Quality Ratings")+
+  theme_bw()+
+  theme(legend.position = "top")
+
+# Volatile Acidity
+wine %>% ggplot(aes(x=volatile.acidity, y=quality)) + 
+  geom_point(color="#69b3a2",size=3) +
+  xlab("Volatile Acidity") +
+  ylab("Quality Ratings") +
+  ggtitle("Volatile Acidity vs. Quality Ratings")+
+  theme_bw()+
+  theme(legend.position = "top")
+
+# Sulphates
+wine %>% ggplot(aes(x=density, y=quality)) + 
+  geom_point(color="#69b3a2",size=3) +
+  xlab("Density") +
+  ylab("Quality Ratings") +
+  ggtitle("Density vs. Quality Ratings")+
+  theme_bw()+
+  theme(legend.position = "top")
+```
+
+### Histograms of the predictors
+
+We can see the general shapes of the distributions of wines.  We see right skewness in alcohol content, near symmetry in Volatile Acidity (red only), and symmetry in density.   
+
+```{r}
+# alcohol
+
+wine %>% ggplot(aes(x=alcohol,fill=color))+
+  geom_histogram(color="#e9ecef")+
+  facet_wrap(~color)+
+  xlab("Alcohol")+
+  ylab("Count")+
+  ggtitle("Histogram of Alcohol")+
+  theme_bw()
+
+# Volatile Acidity
+
+wine %>% ggplot(aes(x=volatile.acidity,fill=color))+
+  geom_histogram(color="#e9ecef")+
+  facet_wrap(~color)+
+  xlab("Volatile Acidity")+
+  ylab("Count")+
+  ggtitle("Histogram of Volatile Acidity")+
+  theme_bw()
+
+# Sulphates
+
+wine %>% ggplot(aes(x=density,fill=color))+
+  geom_histogram(color="#e9ecef")+
+  facet_wrap(~color)+
+  xlab("Density")+
+  ylab("Count")+
+  ggtitle("Histogram of Density")+
+  theme_bw()
+
+```
